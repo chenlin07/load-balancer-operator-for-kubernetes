@@ -118,9 +118,16 @@ func (r *HAProvider) createService(
 			},
 		}
 	}
-	if ip, ok := cluster.ObjectMeta.Annotations[akoov1alpha1.ClusterControlPlaneAnnotations]; ok {
-		// "ip" can be ipv4 or hostname, add ipv4 or hostname to service.Spec.LoadBalancerIP
-		service.Spec.LoadBalancerIP = ip
+	if endpoint, ok := cluster.ObjectMeta.Annotations[akoov1alpha1.ClusterControlPlaneAnnotations]; ok {
+		// "endpoint" can be ipv4 or hostname, add ipv4 or hostname to service.Spec.LoadBalancerIP
+		if net.ParseIP(endpoint) == nil {
+			endpoint, err = queryFQDN(endpoint)
+			if err != nil {
+				r.log.Error(err, "Failed to resolve control plane endpoint ", "endpoint", endpoint)
+				return nil, err
+			}
+		}
+		service.Spec.LoadBalancerIP = endpoint
 	}
 	r.log.Info("Creating " + serviceName + " Service")
 	err = r.Create(ctx, service)
@@ -319,4 +326,12 @@ func (r *HAProvider) ensureEndpoints(ctx context.Context, serviceName, serviceNa
 
 func GetAviInfraSettingName(adc *akoov1alpha1.AKODeploymentConfig) string {
 	return adc.Name + "-ais"
+}
+
+func queryFQDN(fqdn string) (string, error) {
+	ips, err := net.LookupIP(fqdn)
+	if err == nil {
+		return ips[0].String(), err
+	}
+	return "", err
 }
